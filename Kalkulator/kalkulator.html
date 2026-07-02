@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kalkulator</title>
+<style>
+  /* ============================================================
+     DESIGN TOKENS — dua tema (gelap & terang) via [data-theme]
+     ============================================================ */
+  :root, [data-theme="dark"] {
+    --bg:#10131a; --panel:#191d27; --screen:#0c0f16;
+    --key:#232836; --key-hover:#2c3242; --key-fn:#333a4d;
+    --key-op:#f2a33c; --key-op-hover:#f6b45f;
+    --text:#eef1f7; --text-dim:#8b93a7; --danger:#ff6b6b;
+    --hist-bg:#12161f; --radius:18px; --gap:10px;
+  }
+  [data-theme="light"] {
+    --bg:#eef1f6; --panel:#ffffff; --screen:#f4f6fa;
+    --key:#e7ebf2; --key-hover:#dce1eb; --key-fn:#d5dbe6;
+    --key-op:#f2a33c; --key-op-hover:#f6b45f;
+    --text:#1a1f2b; --text-dim:#7b8397; --danger:#d64545;
+    --hist-bg:#ffffff;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--panel) 40%, var(--bg)), var(--bg));
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+    padding:16px; transition:background .3s;
+  }
+
+  /* Wadah: kalkulator + panel riwayat berdampingan */
+  .app { display:flex; align-items:stretch; gap:14px; position:relative; }
+
+  .calculator {
+    width:340px; background:var(--panel); border-radius:28px; padding:22px;
+    box-shadow:0 24px 60px rgba(0,0,0,.45); border:1px solid rgba(128,128,128,.10);
+    transition:background .3s;
+  }
+
+  /* ---- Baris atas: tombol riwayat + judul + toggle tema ---- */
+  .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .topbar h1 { font-size:15px; color:var(--text-dim); font-weight:600; letter-spacing:.5px; }
+  .icon-btn {
+    background:var(--key); color:var(--text); border:none;
+    width:38px; height:38px; border-radius:12px; font-size:16px;
+    cursor:pointer; transition:background .15s; position:relative;
+  }
+  .icon-btn:hover { background:var(--key-hover); }
+  .icon-btn.active { background:var(--key-op); color:#1a1205; }
+  /* Badge jumlah riwayat */
+  .badge {
+    position:absolute; top:-6px; right:-6px; min-width:18px; height:18px;
+    background:var(--key-op); color:#1a1205; border-radius:9px;
+    font-size:11px; font-weight:700; line-height:18px; padding:0 4px; display:none;
+  }
+  .badge.show { display:block; }
+
+  /* ---- Layar ---- */
+  .screen {
+    background:var(--screen); border-radius:var(--radius); padding:20px 18px;
+    margin-bottom:18px; text-align:right; min-height:110px;
+    display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden;
+  }
+  .expression { color:var(--text-dim); font-size:15px; min-height:20px; word-break:break-all; letter-spacing:.5px; }
+  .result { color:var(--text); font-size:42px; font-weight:600; word-break:break-all; line-height:1.1; }
+  .result.error { color:var(--danger); font-size:26px; }
+
+  /* ---- Grid tombol ---- */
+  .keys { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--gap); }
+  button.key {
+    border:none; outline:none; cursor:pointer; font-family:inherit;
+    font-size:20px; font-weight:500; color:var(--text); background:var(--key);
+    height:62px; border-radius:var(--radius); transition:background .15s, transform .05s; user-select:none;
+  }
+  button.key:hover  { background:var(--key-hover); }
+  button.key:active { transform:scale(.95); }
+  button.key:focus-visible { box-shadow:0 0 0 2px var(--key-op); }
+  .fn { background:var(--key-fn); color:var(--text-dim); font-size:18px; }
+  .fn:hover { background:color-mix(in srgb, var(--key-fn) 80%, #888); }
+  .op { background:var(--key-op); color:#1a1205; font-weight:700; }
+  .op:hover { background:var(--key-op-hover); }
+  .span-2 { grid-column:span 2; }
+
+  /* ============================================================
+     PANEL RIWAYAT — tersembunyi secara default (width 0),
+     terbuka saat class .open ditambahkan lewat tombol.
+     ============================================================ */
+  .history {
+    width:0; opacity:0; overflow:hidden;
+    background:var(--hist-bg); border-radius:24px;
+    box-shadow:0 24px 60px rgba(0,0,0,.35); border:1px solid rgba(128,128,128,.10);
+    transition:width .28s ease, opacity .2s ease, padding .28s ease;
+    display:flex; flex-direction:column;
+  }
+  .history.open { width:240px; opacity:1; padding:18px; }
+
+  .history-head {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:12px; white-space:nowrap;
+  }
+  .history-head span { color:var(--text); font-size:14px; font-weight:600; }
+  .clear-hist { background:none; border:none; color:var(--text-dim); font-size:12px; cursor:pointer; }
+  .clear-hist:hover { color:var(--danger); }
+
+  .history-list { overflow-y:auto; flex:1; }
+  .empty-hist { color:var(--text-dim); font-size:13px; text-align:center; margin-top:20px; white-space:nowrap; }
+  .history-item {
+    text-align:right; padding:8px 4px; cursor:pointer;
+    border-bottom:1px solid rgba(128,128,128,.10); white-space:nowrap;
+  }
+  .history-item:last-child { border-bottom:none; }
+  .history-item .h-expr { color:var(--text-dim); font-size:12px; }
+  .history-item .h-res  { color:var(--text); font-size:17px; font-weight:600; }
+  .history-item:hover .h-res { color:var(--key-op); }
+
+  /* ---- Mobile: panel jadi overlay agar tidak menggeser kalkulator ---- */
+  @media (max-width:720px) {
+    .history {
+      position:fixed; top:0; right:0; height:100vh; border-radius:0;
+      z-index:50; transition:transform .28s ease, opacity .2s ease;
+      width:260px; opacity:1; padding:18px; transform:translateX(105%);
+    }
+    .history.open { transform:translateX(0); }
+  }
+  @media (max-width:360px) {
+    .calculator { width:300px; }
+    .result { font-size:34px; }
+    button.key { height:56px; font-size:18px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ============ STRUKTUR HTML ============ -->
+  <div class="app">
+    <div class="calculator">
+      <div class="topbar">
+        <!-- Tombol khusus untuk buka/tutup riwayat -->
+        <button class="icon-btn" id="histBtn" title="Riwayat (H)">
+          🕐<span class="badge" id="badge"></span>
+        </button>
+        <h1>KALKULATOR</h1>
+        <button class="icon-btn" id="themeBtn" title="Ganti tema (T)">☀️</button>
+      </div>
+
+      <div class="screen">
+        <div class="expression" id="expression"></div>
+        <div class="result" id="result">0</div>
+      </div>
+
+      <div class="keys">
+        <button class="key fn" data-action="clear">C</button>
+        <button class="key fn" data-action="delete">⌫</button>
+        <button class="key fn" data-value="%">%</button>
+        <button class="key op" data-value="/">÷</button>
+
+        <button class="key" data-value="7">7</button>
+        <button class="key" data-value="8">8</button>
+        <button class="key" data-value="9">9</button>
+        <button class="key op" data-value="*">×</button>
+
+        <button class="key" data-value="4">4</button>
+        <button class="key" data-value="5">5</button>
+        <button class="key" data-value="6">6</button>
+        <button class="key op" data-value="-">−</button>
+
+        <button class="key" data-value="1">1</button>
+        <button class="key" data-value="2">2</button>
+        <button class="key" data-value="3">3</button>
+        <button class="key op" data-value="+">+</button>
+
+        <button class="key span-2" data-value="0">0</button>
+        <button class="key" data-value=".">.</button>
+        <button class="key op" data-action="equals">=</button>
+      </div>
+    </div>
+
+    <!-- Panel riwayat: di samping (desktop) / overlay (mobile) -->
+    <aside class="history" id="history">
+      <div class="history-head">
+        <span>Riwayat</span>
+        <button class="clear-hist" id="clearHist">Hapus semua</button>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </aside>
+  </div>
+
+  <script>
+  /* ================================================================
+     STATE
+     ================================================================ */
+  const expr_el   = document.getElementById("expression");
+  const result_el = document.getElementById("result");
+  const list_el   = document.getElementById("historyList");
+  const badge_el  = document.getElementById("badge");
+
+  let expr = "", hasError = false, justSolved = false;
+  let history = [];
+  const operators = ["+", "-", "*", "/"];
+
+  const pretty = (s) => s.replace(/\*/g,"×").replace(/\//g,"÷").replace(/-/g,"−");
+
+  function render() {
+    expr_el.textContent = pretty(expr);
+    result_el.classList.remove("error");
+    result_el.textContent = expr === "" ? "0" : pretty(expr);
+  }
+
+  function showError(msg) {
+    hasError = true; expr = "";
+    expr_el.textContent = "";
+    result_el.textContent = msg;
+    result_el.classList.add("error");
+  }
+
+  /* ---- Input ---- */
+  function inputValue(val) {
+    if (hasError) { hasError = false; expr = ""; }
+
+    // Chaining: setelah "=", operator melanjutkan hasil; angka mulai baru
+    if (justSolved) {
+      if (operators.includes(val)) justSolved = false;
+      else { expr = ""; justSolved = false; }
+    }
+
+    const last = expr.slice(-1);
+    if (operators.includes(val)) {
+      if (expr === "" && val !== "-") return;
+      if (operators.includes(last)) { expr = expr.slice(0,-1) + val; render(); return; }
+    }
+    if (val === ".") {
+      const seg = expr.split(/[+\-*/%]/).pop();
+      if (seg.includes(".")) return;
+      if (seg === "") val = "0.";
+    }
+    expr += val; render();
+  }
+
+  function deleteLast() {
+    if (hasError) { hasError = false; expr = ""; render(); return; }
+    justSolved = false; expr = expr.slice(0,-1); render();
+  }
+  function clearAll() { expr = ""; hasError = false; justSolved = false; render(); }
+
+  /* ---- Hitung ---- */
+  function calculate() {
+    if (expr === "" || hasError) return;
+    const original = expr;
+    let safe = expr.replace(/(\d+\.?\d*)%/g, "($1/100)");
+
+    if (!/^[0-9+\-*/().\s]+$/.test(safe)) { showError("Input tidak valid"); return; }
+    if (/\/\s*0(?!\.\d*[1-9])/.test(safe)) { showError("Tidak bisa bagi 0"); return; }
+
+    try {
+      let value = Function('"use strict"; return (' + safe + ')')();
+      if (!isFinite(value)) { showError("Tidak bisa bagi 0"); return; }
+      if (isNaN(value))     { showError("Input tidak valid"); return; }
+      // Batasi maksimal 3 angka di belakang koma; angka bulat tetap tanpa koma
+      value = Math.round(value * 1000) / 1000;
+      expr = String(value);
+      expr_el.textContent = pretty(original);
+      result_el.textContent = pretty(expr);
+      result_el.classList.remove("error");
+      addHistory(original, expr);
+      justSolved = true;
+    } catch (e) { showError("Input tidak valid"); }
+  }
+
+  /* ---- Riwayat ---- */
+  function addHistory(rawExpr, res) {
+    history.unshift({ expr: rawExpr, result: res });
+    if (history.length > 50) history.pop();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    // Badge menampilkan jumlah entri
+    badge_el.textContent = history.length;
+    badge_el.classList.toggle("show", history.length > 0);
+
+    if (history.length === 0) {
+      list_el.innerHTML = '<div class="empty-hist">Belum ada perhitungan</div>';
+      return;
+    }
+    list_el.innerHTML = history.map((h,i) => `
+      <div class="history-item" data-index="${i}">
+        <div class="h-expr">${pretty(h.expr)} =</div>
+        <div class="h-res">${pretty(h.result)}</div>
+      </div>`).join("");
+  }
+
+  // Klik entri → pakai hasilnya sebagai input saat ini
+  list_el.addEventListener("click", (e) => {
+    const item = e.target.closest(".history-item");
+    if (!item) return;
+    expr = history[item.dataset.index].result;
+    hasError = false; justSolved = true; render();
+  });
+
+  document.getElementById("clearHist").addEventListener("click", () => {
+    history = []; renderHistory();
+  });
+
+  /* ---- Toggle panel riwayat ---- */
+  const histBtn = document.getElementById("histBtn");
+  const histPanel = document.getElementById("history");
+  function toggleHistory() {
+    const open = histPanel.classList.toggle("open");
+    histBtn.classList.toggle("active", open);
+  }
+  histBtn.addEventListener("click", toggleHistory);
+
+  /* ---- Tema ---- */
+  const themeBtn = document.getElementById("themeBtn");
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute("data-theme") || "dark";
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    themeBtn.textContent = next === "dark" ? "☀️" : "🌙";
+  }
+  themeBtn.addEventListener("click", toggleTheme);
+
+  /* ================= EVENT: KLIK ================= */
+  document.querySelector(".keys").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const { action, value } = btn.dataset;
+    if (action === "clear")       clearAll();
+    else if (action === "delete") deleteLast();
+    else if (action === "equals") calculate();
+    else if (value)               inputValue(value);
+  });
+
+  /* ================= EVENT: KEYBOARD ================= */
+  document.addEventListener("keydown", (e) => {
+    const k = e.key;
+    if (/[0-9]/.test(k))                                   inputValue(k);
+    else if (["+","-","*","/","%","."].includes(k))       inputValue(k);
+    else if (k === "Enter" || k === "=") { e.preventDefault(); calculate(); }
+    else if (k === "Backspace")                           deleteLast();
+    else if (k === "Escape")                              clearAll();
+    else if (k === "h" || k === "H")                      toggleHistory();
+    else if (k === "t" || k === "T")                      toggleTheme();
+  });
+
+  renderHistory();
+  render();
+  </script>
+</body>
+</html>
